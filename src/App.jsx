@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
 
 import AuthGate from "./components/AuthGate";
 import { FinanceProvider } from "./context/FinanceContext";
-
 import { supabase } from "./lib/supabase";
 
 import Sidebar from "./components/Sidebar";
@@ -11,13 +13,15 @@ import Header from "./components/Header";
 import Dashboard from "./pages/Dashboard";
 import Sales from "./pages/Sales";
 import Expenses from "./pages/Expenses";
+import Stock from "./pages/Stock";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 
 import "./App.css";
 
 function App() {
-  const [page, setPage] = useState("dashboard");
+  const [page, setPage] =
+    useState("dashboard");
 
   const [backgroundImage, setBackgroundImage] =
     useState(() => {
@@ -37,7 +41,9 @@ function App() {
     }
   }, [backgroundImage]);
 
-  function handleBackgroundChange(file) {
+  function handleBackgroundChange(
+    file
+  ) {
     if (
       !file ||
       !file.type.startsWith("image/")
@@ -45,17 +51,26 @@ function App() {
       return;
     }
 
-    const reader = new FileReader();
+    const reader =
+      new FileReader();
 
     reader.onload = () => {
-      setBackgroundImage(reader.result);
+      setBackgroundImage(
+        reader.result
+      );
     };
 
     reader.readAsDataURL(file);
   }
 
   function removeBackground() {
-    setBackgroundImage("/background.jpg");
+    setBackgroundImage(
+      "/background.jpg"
+    );
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
   }
 
   const appStyle = backgroundImage
@@ -63,10 +78,6 @@ function App() {
         "--app-background-image": `url("${backgroundImage}")`,
       }
     : {};
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-  }
 
   return (
     <AuthGate>
@@ -87,13 +98,21 @@ function App() {
             <Header page={page} />
 
             {page === "dashboard" && (
-              <Dashboard setPage={setPage} />
+              <Dashboard
+                setPage={setPage}
+              />
             )}
 
-            {page === "sales" && <Sales />}
+            {page === "sales" && (
+              <Sales />
+            )}
 
             {page === "expenses" && (
               <Expenses />
+            )}
+
+            {page === "stock" && (
+              <Stock />
             )}
 
             {page === "reports" && (
@@ -102,14 +121,18 @@ function App() {
 
             {page === "settings" && (
               <Settings
-                backgroundImage={backgroundImage}
+                backgroundImage={
+                  backgroundImage
+                }
                 onBackgroundChange={
                   handleBackgroundChange
                 }
                 onRemoveBackground={
                   removeBackground
                 }
-                onLogout={handleLogout}
+                onLogout={
+                  handleLogout
+                }
               />
             )}
           </main>

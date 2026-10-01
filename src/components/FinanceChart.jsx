@@ -1,6 +1,14 @@
 import { useMemo, useState } from "react";
+import CustomSelect from "./CustomSelect";
 import { useFinance } from "../context/FinanceContext";
 import { formatCurrency } from "../utils/currency";
+
+const periodOptions = [
+  { value: "today", label: "Dzisiaj" },
+  { value: "week", label: "Ten tydzień" },
+  { value: "month", label: "Ten miesiąc" },
+  { value: "year", label: "Ten rok" },
+];
 
 function FinanceChart() {
   const { operations } = useFinance();
@@ -129,17 +137,12 @@ function FinanceChart() {
           </h2>
         </div>
 
-        <select
+        <CustomSelect
+          className="finance-chart-select"
           value={period}
-          onChange={(event) =>
-            setPeriod(event.target.value)
-          }
-        >
-          <option value="today">Dzisiaj</option>
-          <option value="week">Ten tydzień</option>
-          <option value="month">Ten miesiąc</option>
-          <option value="year">Ten rok</option>
-        </select>
+          onChange={(val) => setPeriod(val)}
+          options={periodOptions}
+        />
       </div>
 
       <div className="chart">

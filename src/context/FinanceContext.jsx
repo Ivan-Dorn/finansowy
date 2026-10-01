@@ -14,23 +14,29 @@ function mapOperation(row) {
   return {
     id: row.id,
     name: row.name,
-    amount: Number(row.amount),
+    amount: Number(row.amount || 0),
     type: row.type,
+
     purchasePrice:
-      row.purchase_price !== null
+      row.purchase_price !== null &&
+      row.purchase_price !== undefined
         ? Number(row.purchase_price)
         : undefined,
+
     salePrice:
-      row.sale_price !== null
+      row.sale_price !== null &&
+      row.sale_price !== undefined
         ? Number(row.sale_price)
         : undefined,
+
     date: row.date,
-    time: String(row.time).slice(0, 5),
+    time: String(row.time || "").slice(0, 5),
   };
 }
 
 export function FinanceProvider({ children }) {
   const [operations, setOperations] = useState([]);
+  const [stock, setStock] = useState([]);
   const [startingBalance, setStartingBalance] = useState(0);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -58,131 +64,69 @@ export function FinanceProvider({ children }) {
         setUser(user);
       }
 
-      const [operationsResult, settingsResult] =
-        await Promise.all([
-          supabase
-            .from("operations")
-            .select("*")
-            .order("date", { ascending: false })
-            .order("created_at", { ascending: false }),
+      const [
+        operationsResult,
+        settingsResult,
+        stockResult,
+      ] = await Promise.all([
+        supabase
+          .from("operations")
+          .select("*")
+          .order("date", { ascending: false })
+          .order("created_at", { ascending: false }),
 
-          supabase
-            .from("finance_settings")
-            .select("*")
-            .eq("user_id", user.id)
-            .maybeSingle(),
-        ]);
+        supabase
+          .from("finance_settings")
+          .select("*")
+          .eq("user_id", user.id)
+          .maybeSingle(),
+
+        supabase
+          .from("stock_products")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", {
+            ascending: false,
+          }),
+      ]);
 
       if (operationsResult.error) {
-        console.error(operationsResult.error);
+        console.error(
+          "Błąd pobierania operacji:",
+          operationsResult.error
+        );
       }
 
       if (settingsResult.error) {
-        console.error(settingsResult.error);
+        console.error(
+          "Błąd pobierania ustawień:",
+          settingsResult.error
+        );
       }
 
-      let loadedOperations =
+      if (stockResult.error) {
+        console.error(
+          "Błąd pobierania składu:",
+          stockResult.error
+        );
+      }
+
+      const loadedOperations =
         operationsResult.data?.map(mapOperation) || [];
 
-      let loadedBalance =
-        settingsResult.data?.starting_balance
-          ? Number(settingsResult.data.starting_balance)
+      const loadedStock =
+        stockResult.data || [];
+
+      const loadedBalance =
+        settingsResult.data
+          ? Number(
+              settingsResult.data.starting_balance || 0
+            )
           : 0;
-
-      // Jednorazowa migracja starych danych lokalnych
-      if (loadedOperations.length === 0) {
-        try {
-          const oldData = localStorage.getItem(
-            "finansowy_data_v1"
-          );
-
-          const oldOperations = localStorage.getItem(
-            "finansowy_operations"
-          );
-
-          const oldBalance = localStorage.getItem(
-            "finansowy_starting_balance"
-          );
-
-          let localOperations = [];
-
-          if (oldData) {
-            const parsed = JSON.parse(oldData);
-
-            localOperations =
-              parsed.operations || [];
-
-            if (
-              !settingsResult.data &&
-              parsed.startingBalance !== undefined
-            ) {
-              loadedBalance =
-                Number(parsed.startingBalance) || 0;
-            }
-          } else if (oldOperations) {
-            localOperations =
-              JSON.parse(oldOperations);
-
-            if (!settingsResult.data && oldBalance) {
-              loadedBalance = Number(oldBalance) || 0;
-            }
-          }
-
-          if (localOperations.length > 0) {
-            const rows = localOperations.map(
-              (operation) => ({
-                id: crypto.randomUUID(),
-                user_id: user.id,
-                name: operation.name,
-                amount: Number(
-                  operation.amount || 0
-                ),
-                type: operation.type,
-                purchase_price:
-                  operation.purchasePrice ?? null,
-                sale_price:
-                  operation.salePrice ??
-                  operation.amount ??
-                  null,
-                date:
-                  operation.date ||
-                  new Date()
-                    .toISOString()
-                    .split("T")[0],
-                time:
-                  operation.time || "00:00",
-              })
-            );
-
-            const { error } =
-              await supabase
-                .from("operations")
-                .insert(rows);
-
-            if (!error) {
-              loadedOperations =
-                rows.map(mapOperation);
-            }
-          }
-
-          if (!settingsResult.data) {
-            await supabase
-              .from("finance_settings")
-              .upsert({
-                user_id: user.id,
-                starting_balance: loadedBalance,
-              });
-          }
-        } catch (error) {
-          console.error(
-            "Migracja danych:",
-            error
-          );
-        }
-      }
 
       if (mounted) {
         setOperations(loadedOperations);
+        setStock(loadedStock);
         setStartingBalance(loadedBalance);
         setLoading(false);
       }
@@ -194,6 +138,10 @@ export function FinanceProvider({ children }) {
       mounted = false;
     };
   }, []);
+
+  // =========================
+  // DODAWANIE OPERACJI
+  // =========================
 
   async function addOperation(
     name,
@@ -230,7 +178,10 @@ export function FinanceProvider({ children }) {
       .insert(row);
 
     if (error) {
-      console.error(error);
+      console.error(
+        "Błąd dodawania operacji:",
+        error
+      );
       return;
     }
 
@@ -240,14 +191,22 @@ export function FinanceProvider({ children }) {
     ]);
   }
 
+  // =========================
+  // USUWANIE OPERACJI
+  // =========================
+
   async function removeOperation(id) {
     const { error } = await supabase
       .from("operations")
       .delete()
-      .eq("id", id);
+      .eq("id", id)
+      .eq("user_id", user?.id);
 
     if (error) {
-      console.error(error);
+      console.error(
+        "Błąd usuwania operacji:",
+        error
+      );
       return;
     }
 
@@ -258,34 +217,238 @@ export function FinanceProvider({ children }) {
     );
   }
 
-  async function updateStartingBalance(value) {
-    const amount = Number(value) || 0;
+  // =========================
+  // DODAWANIE PRODUKTU DO SKŁADU
+  // =========================
 
+  async function addStockProduct(
+    name,
+    quantity,
+    purchasePrice
+  ) {
+    if (!user) return;
+
+    const row = {
+      user_id: user.id,
+      name: name.trim(),
+      quantity: Number(quantity),
+      purchase_price: Number(purchasePrice),
+    };
+
+    const { data, error } = await supabase
+      .from("stock_products")
+      .insert(row)
+      .select()
+      .single();
+
+    if (error) {
+      console.error(
+        "Błąd dodawania produktu do składu:",
+        error
+      );
+      return;
+    }
+
+    setStock((current) => [
+      data,
+      ...current,
+    ]);
+  }
+
+  // =========================
+  // USUWANIE PRODUKTU ZE SKŁADU
+  // =========================
+
+  async function removeStockProduct(productId) {
     if (!user) return;
 
     const { error } = await supabase
-      .from("finance_settings")
-      .upsert({
-        user_id: user.id,
-        starting_balance: amount,
-        updated_at: new Date().toISOString(),
-      });
+      .from("stock_products")
+      .delete()
+      .eq("id", productId)
+      .eq("user_id", user.id);
 
     if (error) {
-      console.error(error);
+      console.error(
+        "Błąd usuwania produktu ze składu:",
+        error
+      );
+      return;
+    }
+
+    setStock((current) =>
+      current.filter(
+        (product) => product.id !== productId
+      )
+    );
+  }
+
+  // =========================
+  // SPRZEDAŻ PRODUKTU ZE SKŁADU
+  // =========================
+
+  async function sellStockProduct(
+    productId,
+    quantity,
+    salePrice
+  ) {
+    if (!user) return;
+
+    const amount = Number(quantity);
+    const sellingPrice = Number(salePrice);
+
+    const product = stock.find(
+      (item) => item.id === productId
+    );
+
+    if (!product) return;
+
+    const currentQuantity =
+      Number(product.quantity);
+
+    const purchasePrice =
+      Number(product.purchase_price);
+
+    if (
+      amount <= 0 ||
+      amount > currentQuantity ||
+      sellingPrice <= 0
+    ) {
+      return;
+    }
+
+    const totalSale =
+      sellingPrice * amount;
+
+    const totalPurchase =
+      purchasePrice * amount;
+
+    const now = new Date();
+
+    const operationRow = {
+      id: crypto.randomUUID(),
+      user_id: user.id,
+      name: product.name,
+      amount: totalSale,
+      type: "income",
+      purchase_price: totalPurchase,
+      sale_price: totalSale,
+      date: now.toISOString().split("T")[0],
+      time: now.toLocaleTimeString("pl-PL", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    };
+
+    // Najpierw zapis sprzedaży
+    const { error: saleError } =
+      await supabase
+        .from("operations")
+        .insert(operationRow);
+
+    if (saleError) {
+      console.error(
+        "Błąd zapisu sprzedaży:",
+        saleError
+      );
+      return;
+    }
+
+    const newQuantity =
+      currentQuantity - amount;
+
+    // Następnie zmniejszenie składu
+    const {
+      data: updatedProduct,
+      error: stockError,
+    } = await supabase
+      .from("stock_products")
+      .update({
+        quantity: newQuantity,
+      })
+      .eq("id", productId)
+      .eq("user_id", user.id)
+      .select()
+      .single();
+
+    if (stockError) {
+      console.error(
+        "Błąd aktualizacji składu:",
+        stockError
+      );
+
+      // Jeżeli aktualizacja składu się nie udała,
+      // usuwamy zapis sprzedaży, żeby dane się
+      // nie rozjechały.
+      await supabase
+        .from("operations")
+        .delete()
+        .eq("id", operationRow.id)
+        .eq("user_id", user.id);
+
+      return;
+    }
+
+    setOperations((current) => [
+      mapOperation(operationRow),
+      ...current,
+    ]);
+
+    setStock((current) =>
+      current.map((item) =>
+        item.id === productId
+          ? updatedProduct
+          : item
+      )
+    );
+  }
+
+  // =========================
+  // STAN POCZĄTKOWY
+  // =========================
+
+  async function updateStartingBalance(
+    value
+  ) {
+    if (!user) return;
+
+    const amount =
+      Number(value) || 0;
+
+    const { error } =
+      await supabase
+        .from("finance_settings")
+        .upsert({
+          user_id: user.id,
+          starting_balance: amount,
+          updated_at:
+            new Date().toISOString(),
+        });
+
+    if (error) {
+      console.error(
+        "Błąd zapisywania stanu początkowego:",
+        error
+      );
       return;
     }
 
     setStartingBalance(amount);
   }
 
+  // =========================
+  // OBLICZENIA FINANSOWE
+  // =========================
+
   const finances = useMemo(() => {
     const sales = operations.filter(
-      (operation) => operation.type === "income"
+      (operation) =>
+        operation.type === "income"
     );
 
     const expenses = operations.filter(
-      (operation) => operation.type === "expense"
+      (operation) =>
+        operation.type === "expense"
     );
 
     const turnover = sales.reduce(
@@ -308,20 +471,28 @@ export function FinanceProvider({ children }) {
       0
     );
 
-    const expensesTotal = expenses.reduce(
-      (sum, operation) =>
-        sum + Number(operation.amount || 0),
-      0
-    );
+    const expensesTotal =
+      expenses.reduce(
+        (sum, operation) =>
+          sum +
+          Number(
+            operation.amount || 0
+          ),
+        0
+      );
 
+    // Zysk na sprzedaży
     const profit =
       turnover - purchaseCosts;
 
+    // Czysty zysk po dodatkowych wydatkach
     const netProfit =
       profit - expensesTotal;
 
+    // Stan pieniędzy
     const currentBalance =
-      startingBalance + netProfit;
+      Number(startingBalance) +
+      netProfit;
 
     return {
       turnover,
@@ -332,31 +503,45 @@ export function FinanceProvider({ children }) {
       currentBalance,
       startingBalance,
     };
-  }, [operations, startingBalance]);
+  }, [
+    operations,
+    startingBalance,
+  ]);
+
+  // =========================
+  // ŁADOWANIE
+  // =========================
 
   if (loading) {
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "grid",
-          placeItems: "center",
-          background: "#090b0d",
-          color: "white",
-        }}
-      >
+      <div className="auth-loading">
         Ładowanie danych...
       </div>
     );
   }
 
+  // =========================
+  // CONTEXT
+  // =========================
+
   return (
     <FinanceContext.Provider
       value={{
+        // Finanse
         operations,
         finances,
+
+        // Operacje
         addOperation,
         removeOperation,
+
+        // Skład
+        stock,
+        addStockProduct,
+        removeStockProduct,
+        sellStockProduct,
+
+        // Ustawienia
         startingBalance,
         setStartingBalance:
           updateStartingBalance,
@@ -368,5 +553,7 @@ export function FinanceProvider({ children }) {
 }
 
 export function useFinance() {
-  return useContext(FinanceContext);
+  return useContext(
+    FinanceContext
+  );
 }

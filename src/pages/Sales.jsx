@@ -1,64 +1,115 @@
 import { useState } from "react";
+import CustomSelect from "../components/CustomSelect";
+import NumberInput from "../components/NumberInput";
 import { useFinance } from "../context/FinanceContext";
 import { formatCurrency } from "../utils/currency";
 
 function Sales() {
-  const { operations, addOperation, removeOperation } = useFinance();
+  const {
+    operations,
+    stock,
+    sellStockProduct,
+    removeOperation,
+  } = useFinance();
 
-  const [name, setName] = useState("");
-  const [purchasePrice, setPurchasePrice] = useState("");
-  const [salePrice, setSalePrice] = useState("");
+  const [selectedProduct, setSelectedProduct] =
+    useState("");
+
+  const [quantity, setQuantity] =
+    useState("1");
+
+  const [salePrice, setSalePrice] =
+    useState("");
 
   const sales = operations.filter(
-    (operation) => operation.type === "income"
+    (operation) =>
+      operation.type === "income"
   );
 
-  function handleSubmit(event) {
+  const selected =
+    stock.find(
+      (product) =>
+        product.id === selectedProduct
+    );
+
+  const productOptions = [
+    {
+      value: "",
+      label: "Wybierz produkt ze składu",
+      isPlaceholder: true,
+    },
+    ...stock
+      .filter(
+        (product) =>
+          Number(product.quantity) > 0
+      )
+      .map((product) => ({
+        value: product.id,
+        label: product.name,
+        badge: `${product.quantity} szt.`,
+      })),
+  ];
+
+  async function handleSubmit(event) {
     event.preventDefault();
 
     if (
-      !name.trim() ||
-      !purchasePrice ||
-      !salePrice ||
-      Number(purchasePrice) < 0 ||
+      !selectedProduct ||
+      !selected ||
+      Number(quantity) <= 0 ||
+      Number(quantity) >
+        Number(selected.quantity) ||
       Number(salePrice) <= 0
     ) {
       return;
     }
 
-    addOperation(name, salePrice, "income", {
-      purchasePrice: Number(purchasePrice),
-      salePrice: Number(salePrice),
-    });
+    await sellStockProduct(
+      selectedProduct,
+      quantity,
+      salePrice
+    );
 
-    setName("");
-    setPurchasePrice("");
+    setSelectedProduct("");
+    setQuantity("1");
     setSalePrice("");
   }
 
   return (
     <section>
       <div className="page-heading">
-        <span className="section-label">SPRZEDAŻ</span>
+        <span className="section-label">
+          SPRZEDAŻ
+        </span>
+
         <h2>Dodaj sprzedaż</h2>
       </div>
 
-      <form className="operation-form" onSubmit={handleSubmit}>
-        <input
-          type="text"
-          placeholder="Nazwa produktu"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
+      <form
+        className="operation-form sales-from-stock-form"
+        onSubmit={handleSubmit}
+      >
+        <CustomSelect
+          value={selectedProduct}
+          onChange={(val) =>
+            setSelectedProduct(val)
+          }
+          options={productOptions}
+          placeholder="Wybierz produkt ze składu"
         />
 
-        <input
-          type="number"
-          min="0"
-          step="0.01"
-          placeholder="Cena zakupu"
-          value={purchasePrice}
+        <NumberInput
+          min="1"
+          max={
+            selected
+              ? selected.quantity
+              : undefined
+          }
+          value={quantity}
           onChange={(event) =>
-            setPurchasePrice(event.target.value)
+            setQuantity(
+              event.target.value
+            )
           }
         />
 
@@ -69,19 +120,54 @@ function Sales() {
           placeholder="Cena sprzedaży"
           value={salePrice}
           onChange={(event) =>
-            setSalePrice(event.target.value)
+            setSalePrice(
+              event.target.value
+            )
           }
         />
 
-        <button className="action-button primary" type="submit">
-          ＋ Dodaj sprzedaż
+        <button
+          className="action-button primary"
+          type="submit"
+        >
+          ＋ Sprzedaj
         </button>
       </form>
+
+      {selected && (
+        <div className="selected-product">
+          <div>
+            <span>PRODUKT</span>
+            <strong>
+              {selected.name}
+            </strong>
+          </div>
+
+          <div>
+            <span>DOSTĘPNE</span>
+            <strong>
+              {selected.quantity} szt.
+            </strong>
+          </div>
+
+          <div>
+            <span>KOSZT ZAKUPU</span>
+            <strong>
+              {formatCurrency(
+                selected.purchase_price
+              )}
+            </strong>
+          </div>
+        </div>
+      )}
 
       <div className="panel">
         <div className="panel-header">
           <div>
-            <span className="section-label">HISTORIA</span>
+            <span className="section-label">
+              HISTORIA
+            </span>
+
             <h2>Sprzedaż</h2>
           </div>
         </div>
@@ -93,28 +179,46 @@ function Sales() {
             </p>
           ) : (
             sales.map((sale) => {
-              const purchase = Number(
-                sale.purchasePrice ?? 0
-              );
+              const purchase =
+                Number(
+                  sale.purchasePrice ?? 0
+                );
 
-              const selling = Number(
-                sale.salePrice ?? sale.amount ?? 0
-              );
+              const selling =
+                Number(
+                  sale.salePrice ??
+                    sale.amount ??
+                    0
+                );
 
-              const profit = selling - purchase;
+              const profit =
+                selling - purchase;
 
               return (
-                <div className="operation" key={sale.id}>
+                <div
+                  className="operation"
+                  key={sale.id}
+                >
                   <div className="operation-icon income">
                     +
                   </div>
 
                   <div className="operation-info">
-                    <strong>{sale.name}</strong>
+                    <strong>
+                      {sale.name}
+                    </strong>
 
                     <span>
-                      Zakup: {formatCurrency(purchase)} •
-                      Sprzedaż: {formatCurrency(selling)} •
+                      Zakup:{" "}
+                      {formatCurrency(
+                        purchase
+                      )}
+                      {" • "}
+                      Sprzedaż:{" "}
+                      {formatCurrency(
+                        selling
+                      )}
+                      {" • "}
                       {sale.time}
                     </span>
                   </div>
@@ -126,15 +230,23 @@ function Sales() {
                         : "operation-expense"
                     }
                   >
-                    {profit >= 0 ? "+" : "-"}
-                    {formatCurrency(Math.abs(profit))}
+                    {profit >= 0
+                      ? "+"
+                      : "-"}
+                    {formatCurrency(
+                      Math.abs(profit)
+                    )}
                   </strong>
 
                   <button
                     className="operation-delete"
-                    onClick={() => removeOperation(sale.id)}
-                    title="Usuń sprzedaż"
                     type="button"
+                    onClick={() =>
+                      removeOperation(
+                        sale.id
+                      )
+                    }
+                    title="Usuń sprzedaż"
                   >
                     ×
                   </button>
