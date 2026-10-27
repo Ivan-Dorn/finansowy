@@ -3,7 +3,7 @@ import NumberInput from "../components/NumberInput";
 import { useFinance } from "../context/FinanceContext";
 import { formatCurrency } from "../utils/currency";
 
-function Stock() {
+function Stock({ onSellProduct }) {
   const {
     stock,
     addStockProduct,
@@ -187,6 +187,17 @@ function Stock() {
                       ? "SPRZEDANO"
                       : `${quantity} szt.`}
                   </span>
+
+                  {!sold && onSellProduct && (
+                    <button
+                      className="stock-sell-btn"
+                      type="button"
+                      onClick={() => onSellProduct(product.id)}
+                      title="Sprzedaj ten produkt"
+                    >
+                      🛒 Sprzedaj
+                    </button>
+                  )}
 
                   <button
                     className="stock-delete"

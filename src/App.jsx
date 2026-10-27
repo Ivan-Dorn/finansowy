@@ -23,6 +23,14 @@ function App() {
   const [page, setPage] =
     useState("dashboard");
 
+  const [selectedStockForSale, setSelectedStockForSale] =
+    useState(null);
+
+  function handleSellFromStock(productId) {
+    setSelectedStockForSale(productId);
+    setPage("sales");
+  }
+
   const [backgroundImage, setBackgroundImage] =
     useState(() => {
       return (
@@ -104,7 +112,11 @@ function App() {
             )}
 
             {page === "sales" && (
-              <Sales />
+              <Sales
+                setPage={setPage}
+                initialSelectedProductId={selectedStockForSale}
+                onClearInitialProduct={() => setSelectedStockForSale(null)}
+              />
             )}
 
             {page === "expenses" && (
@@ -112,7 +124,7 @@ function App() {
             )}
 
             {page === "stock" && (
-              <Stock />
+              <Stock onSellProduct={handleSellFromStock} />
             )}
 
             {page === "reports" && (
